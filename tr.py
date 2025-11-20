@@ -14,12 +14,12 @@ db = SQLAlchemy(app)
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
-    count = db.Column(db.Float, nullable=False)
+    count = db.Column(db.Integer, nullable=False)
     day = db.Column(db.Integer, nullable=False)
     month = db.Column(db.Integer, nullable=False)
     year = db.Column(db.Integer, nullable=False)
 
-    def to_dict(self) -> dict[str, str | int | float]:
+    def to_dict(self) -> dict[str, str | int ]:
         return {"id": self.id, "name": self.name, "count": self.count, "day": self.day, "month": self.month, "year": self.year}
 
 
@@ -43,18 +43,38 @@ def create_item():
     day = payload.get("day")
     month = payload.get("month")
     year = payload.get("year")
-    if not name:
-        return jsonify({"error": "name is required"}), 400
+    if not name or not day or not month or not year or not count:
+        return jsonify({"error": "not all data entered"}), 400
+    if  count is None and not isinstance(count,int):
+        return jsonify({"error": "count must be a number"}), 400
+    # Ищем существующую запись с такими же name, day, month, year
+    existing_name = Item.query.filter_by(
+        name=name,
+        day=day,
+        month=month,
+        year=year
+    ).first()
+    if existing_name:
+        existing_name.count+=count
+        try:
+            db.session.commit()
+            # Возвращаем обновленную запись
+            return jsonify(existing_name.to_dict()), 200
+        except SQLAlchemyError:
+            # В случае ошибки откатываем изменения
+            db.session.rollback()
+            return jsonify({"error": "failed to update item"}), 500 
+    else:
+       
+        item = Item(name=name, count=count,day=day,month=month,year=year)
+        db.session.add(item)
+        try:
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            return jsonify({"error": "failed to save item"}), 500
 
-    item = Item(name=name, count=count,day=day,month=month,year=year)
-    db.session.add(item)
-    try:
-        db.session.commit()
-    except SQLAlchemyError:
-        db.session.rollback()
-        return jsonify({"error": "failed to save item"}), 500
-
-    return jsonify(item.to_dict()), 201
+        return jsonify(item.to_dict()), 201
 
 
 @app.get("/sum")
